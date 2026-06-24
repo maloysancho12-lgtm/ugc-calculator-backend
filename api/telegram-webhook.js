@@ -7,6 +7,7 @@
 // message in BOTH the owner's and the partner's chat.
 
 import { Redis } from '@upstash/redis';
+import { updateOrderRow } from './_sheets.js';
 
 const redis = Redis.fromEnv();
 
@@ -66,6 +67,15 @@ export default async function handler(req, res) {
     await redis.set(orderId, order, { ex: 60 * 60 * 24 * 7 });
 
     await answerCallback(BOT_TOKEN, callback.id, 'Забрано! ✅');
+
+    // Reflect the claim in Google Sheets: status moves to "В роботі"
+    // and "Хто забрав" records who clicked first.
+    if (order.sheetRow) {
+      await updateOrderRow(order.sheetRow, {
+        'Статус замовлення': 'В роботі',
+        'Хто забрав': clickerName,
+      });
+    }
 
     // Edit the message in every chat it was sent to.
     const updatedText = `${order.text}\n\n✅ *Забрав: ${clickerName}*`;

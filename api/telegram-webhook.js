@@ -3,10 +3,12 @@
 // Vercel Serverless Function
 // Telegram calls this URL every time a user interacts with the bot
 // (here: presses the "✅ Забираю замовлення" inline button).
-// Uses Vercel KV to enforce "first click wins", then edits the
+// Uses Upstash Redis to enforce "first click wins", then edits the
 // message in BOTH the owner's and the partner's chat.
 
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
+
+const redis = Redis.fromEnv();
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -39,7 +41,7 @@ export default async function handler(req, res) {
       .filter(Boolean)
       .join(' ');
 
-    const order = await kv.get(orderId);
+    const order = await redis.get(orderId);
 
     if (!order) {
       await answerCallback(BOT_TOKEN, callback.id, 'Замовлення не знайдено або застаріло.');
@@ -61,7 +63,7 @@ export default async function handler(req, res) {
     // First click wins — mark as claimed immediately to avoid race conditions.
     order.claimed = true;
     order.claimedBy = clickerName;
-    await kv.set(orderId, order, { ex: 60 * 60 * 24 * 7 });
+    await redis.set(orderId, order, { ex: 60 * 60 * 24 * 7 });
 
     await answerCallback(BOT_TOKEN, callback.id, 'Забрано! ✅');
 

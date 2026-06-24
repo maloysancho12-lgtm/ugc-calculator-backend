@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { base, extras, total, clientName } = req.body;
+    const { base, extras, includedExtras, total, clientName } = req.body;
 
     if (!base || total === undefined) {
       res.status(400).json({ error: 'Missing required fields' });
@@ -38,16 +38,23 @@ export default async function handler(req, res) {
 
     // Build a readable message
     const extrasList = (extras && extras.length > 0)
-      ? extras.map(e => `• ${e}`).join('\n')
-      : '— без додаткових факторів';
+      ? extras.map(e => `• ${e} (платно)`).join('\n')
+      : '';
+
+    const includedList = (includedExtras && includedExtras.length > 0)
+      ? includedExtras.map(e => `✓ ${e} (включено)`).join('\n')
+      : '';
+
+    const factorsBlock = [extrasList, includedList].filter(Boolean).join('\n');
+    const factorsText = factorsBlock || '— без додаткових факторів';
 
     const who = clientName ? `\n👤 Від: ${clientName}` : '';
 
     const text =
       `💰 *Новий розрахунок з калькулятора*\n\n` +
-      `🎬 Тип відео: *${base}*\n` +
-      `${extrasList}\n\n` +
-      `💵 Підсумок: *$${total}* / відео${who}`;
+      `📦 Пакет: *${base}*\n` +
+      `${factorsText}\n\n` +
+      `💵 Підсумок: *$${total}*${who}`;
 
     const tgResponse = await fetch(
       `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,

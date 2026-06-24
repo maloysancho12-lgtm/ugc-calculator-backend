@@ -2,10 +2,14 @@
 //
 // Vercel Serverless Function
 // Receives price calculation data from the calculator page,
-// then sends a formatted message to the owner via Telegram Bot API.
+// then sends a formatted message WITH a "Claim order" button
+// to both the owner and the partner via Telegram Bot API.
+// Order claim state is stored in Vercel KV so the webhook
+// (api/telegram-webhook.js) can enforce "first click wins".
+
+import { kv } from '@vercel/kv';
 
 export default async function handler(req, res) {
-  // Allow the calculator page (any origin) to call this endpoint
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -21,7 +25,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { base, extras, includedExtras, total, clientName } = req.body;
+    const { base, extras, total, clientName } = req.body;
 
     if (!base || total === undefined) {
       res.status(400).json({ error: 'Missing required fields' });
@@ -29,55 +33,71 @@ export default async function handler(req, res) {
     }
 
     const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-    const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+    const OWNER_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+    const PARTNER_CHAT_ID = process.env.TELEGRAM_PARTNER_CHAT_ID;
 
-    if (!BOT_TOKEN || !CHAT_ID) {
+    if (!BOT_TOKEN || !OWNER_CHAT_ID) {
       res.status(500).json({ error: 'Server not configured' });
       return;
     }
 
-    // Build a readable message
+    const orderId = `order_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
     const extrasList = (extras && extras.length > 0)
-      ? extras.map(e => `• ${e} (платно)`).join('\n')
-      : '';
-
-    const includedList = (includedExtras && includedExtras.length > 0)
-      ? includedExtras.map(e => `✓ ${e} (включено)`).join('\n')
-      : '';
-
-    const factorsBlock = [extrasList, includedList].filter(Boolean).join('\n');
-    const factorsText = factorsBlock || '— без додаткових факторів';
+      ? extras.map(e => `• ${e}`).join('\n')
+      : '— без додаткових факторів';
 
     const who = clientName ? `\n👤 Від: ${clientName}` : '';
 
     const text =
       `💰 *Новий розрахунок з калькулятора*\n\n` +
       `📦 Пакет: *${base}*\n` +
-      `${factorsText}\n\n` +
+      `${extrasList}\n\n` +
       `💵 Підсумок: *$${total}*${who}`;
 
-    const tgResponse = await fetch(
-      `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: CHAT_ID,
-          text: text,
-          parse_mode: 'Markdown',
-        }),
+    const recipients = [OWNER_CHAT_ID];
+    if (PARTNER_CHAT_ID) recipients.push(PARTNER_CHAT_ID);
+
+    const messages = {};
+
+    for (const chatId of recipients) {
+      const tgResponse = await fetch(
+        `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: text,
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '✅ Забираю замовлення', callback_data: `claim:${orderId}` }
+              ]]
+            }
+          }),
+        }
+      );
+
+      const tgData = await tgResponse.json();
+
+      if (tgData.ok) {
+        messages[chatId] = tgData.result.message_id;
+      } else {
+        console.error('Telegram send error for', chatId, tgData);
       }
-    );
-
-    const tgData = await tgResponse.json();
-
-    if (!tgData.ok) {
-      console.error('Telegram API error:', tgData);
-      res.status(502).json({ error: 'Failed to send Telegram message' });
-      return;
     }
 
-    res.status(200).json({ success: true });
+    // Store order state so the webhook can validate the claim
+    // and edit both copies of the message afterwards.
+    await kv.set(orderId, {
+      claimed: false,
+      claimedBy: null,
+      text,
+      messages, // { chat_id: message_id }
+    }, { ex: 60 * 60 * 24 * 7 }); // expires after 7 days
+
+    res.status(200).json({ success: true, orderId });
   } catch (err) {
     console.error('Handler error:', err);
     res.status(500).json({ error: 'Internal server error' });

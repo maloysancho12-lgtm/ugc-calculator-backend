@@ -4,10 +4,12 @@
 // Receives price calculation data from the calculator page,
 // then sends a formatted message WITH a "Claim order" button
 // to both the owner and the partner via Telegram Bot API.
-// Order claim state is stored in Vercel KV so the webhook
+// Order claim state is stored in Upstash Redis so the webhook
 // (api/telegram-webhook.js) can enforce "first click wins".
 
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
+
+const redis = Redis.fromEnv();
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -90,7 +92,7 @@ export default async function handler(req, res) {
 
     // Store order state so the webhook can validate the claim
     // and edit both copies of the message afterwards.
-    await kv.set(orderId, {
+    await redis.set(orderId, {
       claimed: false,
       claimedBy: null,
       text,

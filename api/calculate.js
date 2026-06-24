@@ -8,6 +8,7 @@
 // (api/telegram-webhook.js) can enforce "first click wins".
 
 import { Redis } from '@upstash/redis';
+import { appendOrderRow } from './_sheets.js';
 
 const redis = Redis.fromEnv();
 
@@ -90,13 +91,23 @@ export default async function handler(req, res) {
       }
     }
 
-    // Store order state so the webhook can validate the claim
-    // and edit both copies of the message afterwards.
+    // Append the order as a new row in Google Sheets for bookkeeping.
+    const sheetRow = await appendOrderRow({
+      orderId,
+      clientName,
+      packageLabel: base,
+      extras,
+      total,
+    });
+
+    // Store order state so the webhook can validate the claim,
+    // edit both copies of the message, and update the Sheets row.
     await redis.set(orderId, {
       claimed: false,
       claimedBy: null,
       text,
       messages, // { chat_id: message_id }
+      sheetRow,
     }, { ex: 60 * 60 * 24 * 7 }); // expires after 7 days
 
     res.status(200).json({ success: true, orderId });

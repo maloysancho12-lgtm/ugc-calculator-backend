@@ -15,7 +15,23 @@
 import crypto from 'crypto';
 
 const SERVICE_ACCOUNT_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-const PRIVATE_KEY = (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+
+// Handles the private key whether Vercel stored it with literal "\n"
+// sequences or with real newline characters — strips surrounding quotes
+// if present, then normalizes to real newlines either way.
+function normalizePrivateKey(raw) {
+  if (!raw) return '';
+  let key = raw.trim();
+  // Strip accidental wrapping quotes (e.g. pasted with quotes included)
+  if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
+    key = key.slice(1, -1);
+  }
+  // Convert literal backslash-n sequences into real newlines
+  key = key.replace(/\\n/g, '\n');
+  return key;
+}
+
+const PRIVATE_KEY = normalizePrivateKey(process.env.GOOGLE_PRIVATE_KEY);
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const SHEET_NAME = process.env.GOOGLE_SHEET_NAME || 'Замовлення';
 
@@ -36,6 +52,12 @@ function base64url(input) {
  * then exchanges it for a short-lived access token.
  */
 async function getAccessToken() {
+  // Diagnostic logging — safe to leave in, doesn't expose the actual key.
+  console.log('PRIVATE_KEY starts with:', JSON.stringify(PRIVATE_KEY.slice(0, 30)));
+  console.log('PRIVATE_KEY ends with:', JSON.stringify(PRIVATE_KEY.slice(-30)));
+  console.log('PRIVATE_KEY length:', PRIVATE_KEY.length);
+  console.log('PRIVATE_KEY contains real newlines:', PRIVATE_KEY.includes('\n'));
+
   const header = { alg: 'RS256', typ: 'JWT' };
   const now = Math.floor(Date.now() / 1000);
   const claims = {

@@ -52,12 +52,6 @@ function base64url(input) {
  * then exchanges it for a short-lived access token.
  */
 async function getAccessToken() {
-  // Diagnostic logging — safe to leave in, doesn't expose the actual key.
-  console.log('PRIVATE_KEY starts with:', JSON.stringify(PRIVATE_KEY.slice(0, 30)));
-  console.log('PRIVATE_KEY ends with:', JSON.stringify(PRIVATE_KEY.slice(-30)));
-  console.log('PRIVATE_KEY length:', PRIVATE_KEY.length);
-  console.log('PRIVATE_KEY contains real newlines:', PRIVATE_KEY.includes('\n'));
-
   const header = { alg: 'RS256', typ: 'JWT' };
   const now = Math.floor(Date.now() / 1000);
   const claims = {
@@ -90,7 +84,17 @@ async function getAccessToken() {
     }),
   });
 
-  const data = await response.json();
+  const rawText = await response.text();
+  console.log('Token exchange status:', response.status);
+  console.log('Token exchange response (first 300 chars):', rawText.slice(0, 300));
+
+  let data;
+  try {
+    data = JSON.parse(rawText);
+  } catch (parseErr) {
+    console.error('Token exchange response was not JSON:', rawText.slice(0, 500));
+    throw new Error(`Google token exchange returned non-JSON response (status ${response.status})`);
+  }
 
   if (!response.ok) {
     console.error('Google token exchange error:', data);

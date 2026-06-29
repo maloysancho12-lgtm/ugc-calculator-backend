@@ -46,7 +46,7 @@ export default async function handler(req, res) {
 
     const orderId = `order_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-    const extrasList = (extras && extras.length > 0)
+    const extrasList = extras?.length
       ? extras.map(e => `• ${e}`).join('\n')
       : '— без додаткових факторів';
 
@@ -58,8 +58,7 @@ export default async function handler(req, res) {
       `${extrasList}\n\n` +
       `💵 Підсумок: *$${total}*${who}`;
 
-    const recipients = [OWNER_CHAT_ID];
-    if (PARTNER_CHAT_ID) recipients.push(PARTNER_CHAT_ID);
+    const recipients = [OWNER_CHAT_ID, PARTNER_CHAT_ID].filter(Boolean);
 
     const messages = {};
 
@@ -91,7 +90,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // Append the order as a new row in Google Sheets for bookkeeping.
     const sheetRow = await appendOrderRow({
       orderId,
       clientName,
@@ -108,7 +106,7 @@ export default async function handler(req, res) {
       text,
       messages, // { chat_id: message_id }
       sheetRow,
-    }, { ex: 60 * 60 * 24 * 7 }); // expires after 7 days
+    }, { ex: 60 * 60 * 24 * 7 });
 
     res.status(200).json({ success: true, orderId });
   } catch (err) {

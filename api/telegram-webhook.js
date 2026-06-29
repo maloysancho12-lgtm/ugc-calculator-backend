@@ -21,7 +21,6 @@ export default async function handler(req, res) {
     const update = req.body;
     const callback = update.callback_query;
 
-    // We only care about callback button presses here.
     if (!callback) {
       res.status(200).json({ ok: true });
       return;
@@ -68,8 +67,6 @@ export default async function handler(req, res) {
 
     await answerCallback(BOT_TOKEN, callback.id, 'Забрано! ✅');
 
-    // Reflect the claim in Google Sheets: status moves to "В роботі"
-    // and "Хто забрав" records who clicked first.
     if (order.sheetRow) {
       await updateOrderRow(order.sheetRow, {
         'Статус замовлення': 'В роботі',
@@ -77,7 +74,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // Edit the message in every chat it was sent to.
     const updatedText = `${order.text}\n\n✅ *Забрав: ${clickerName}*`;
 
     for (const [chatId, messageId] of Object.entries(order.messages)) {

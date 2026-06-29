@@ -16,17 +16,14 @@ import crypto from 'crypto';
 
 const SERVICE_ACCOUNT_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
 
-// Handles the private key whether Vercel stored it with literal "\n"
-// sequences or with real newline characters — strips surrounding quotes
-// if present, then normalizes to real newlines either way.
+// Handles Vercel env-var quirks: strips wrapping quotes and converts literal \n to newlines.
 function normalizePrivateKey(raw) {
   if (!raw) return '';
   let key = raw.trim();
-  // Strip accidental wrapping quotes (e.g. pasted with quotes included)
+  // Strip accidental wrapping quotes (e.g. pasted into Vercel with surrounding quotes)
   if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
     key = key.slice(1, -1);
   }
-  // Convert literal backslash-n sequences into real newlines
   key = key.replace(/\\n/g, '\n');
   return key;
 }
@@ -67,11 +64,7 @@ async function getAccessToken() {
   signer.update(unsigned);
   signer.end();
   const signature = signer.sign(PRIVATE_KEY);
-  const signatureB64 = signature
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
+  const signatureB64 = base64url(signature);
 
   const jwt = `${unsigned}.${signatureB64}`;
 
@@ -126,7 +119,7 @@ async function appendOrderRow({ orderId, clientName, packageLabel, extras, total
       new Date().toISOString(),
       clientName || '—',
       packageLabel,
-      (extras && extras.length > 0) ? extras.join('\n') : '—',
+      extras?.length ? extras.join('\n') : '—',
       total,
       'Нове',
       '',
